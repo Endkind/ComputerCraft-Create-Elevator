@@ -2,7 +2,34 @@
 
 local network = {}
 
-network.PROTOCOL = "elevator"
+
+network.PROTOCOL =
+    "elevator"
+
+
+function network.sendNetworkProbe()
+    rednet.broadcast(
+        {
+            type =
+                "network_probe"
+        },
+        network.PROTOCOL
+    )
+end
+
+
+function network.sendNetworkProbeResponse(
+    computer_id
+)
+    rednet.send(
+        computer_id,
+        {
+            type =
+                "network_probe_response"
+        },
+        network.PROTOCOL
+    )
+end
 
 
 function network.sendFloorState(
@@ -21,7 +48,9 @@ function network.sendFloorState(
 end
 
 
-function network.requestFloorStates(group)
+function network.requestFloorStates(
+    group
+)
     rednet.broadcast({
         type = "request_floor_states",
         group = group
@@ -61,13 +90,10 @@ function network.sendGroupStatus(
 )
     rednet.broadcast({
         type = "group_status",
-
         group = group,
         current_floor = current_floor,
-
         busy = busy,
         lock_until = lock_until,
-
         timeout_until = timeout_until,
         check_until = check_until
     }, network.PROTOCOL)
@@ -81,7 +107,9 @@ function network.requestGroups()
 end
 
 
-function network.rebootFloors(group)
+function network.rebootFloors(
+    group
+)
     rednet.broadcast({
         type = "reboot_floors",
         group = group
@@ -97,10 +125,8 @@ function network.requestElevator(
 )
     rednet.broadcast({
         type = "elevator_request",
-
         group = group,
         floor = floor,
-
         request_id = request_id,
         requester_id = requester_id
     }, network.PROTOCOL)
@@ -135,18 +161,34 @@ function network.sendCallStatus(
 )
     rednet.broadcast({
         type = "call_status",
-
         requester_id = requester_id,
         request_id = request_id,
-
         group = group,
         floor = floor,
-
         status = status,
-
         wait_until = wait_until,
         tries_remaining = tries_remaining
     }, network.PROTOCOL)
+end
+
+
+function network.isNetworkProbe(
+    message
+)
+    return type(message)
+        == "table"
+        and message.type
+            == "network_probe"
+end
+
+
+function network.isNetworkProbeResponse(
+    message
+)
+    return type(message)
+        == "table"
+        and message.type
+            == "network_probe_response"
 end
 
 
@@ -187,24 +229,33 @@ function network.isGroupStatus(message)
         return false
     end
 
+
     if message.type ~= "group_status" then
         return false
     end
+
 
     if type(message.group) ~= "number" then
         return false
     end
 
+
     if message.current_floor ~= nil
-        and type(message.current_floor) ~= "number"
+        and type(message.current_floor)
+            ~= "number"
     then
         return false
     end
 
-    return type(message.busy) == "boolean"
-        and type(message.lock_until) == "number"
-        and type(message.timeout_until) == "number"
-        and type(message.check_until) == "number"
+
+    return type(message.busy)
+            == "boolean"
+        and type(message.lock_until)
+            == "number"
+        and type(message.timeout_until)
+            == "number"
+        and type(message.check_until)
+            == "number"
 end
 
 

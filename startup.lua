@@ -1,6 +1,7 @@
 -- startup.lua
 
-local config_module = require("config")
+local config_module =
+    require("config")
 
 
 if not config_module.exists() then
@@ -21,7 +22,9 @@ if not config_module.exists() then
     if not success then
         error(
             "Failed to create config.json: "
-            .. tostring(error_message)
+            .. tostring(
+                error_message
+            )
         )
     end
 
@@ -49,19 +52,27 @@ local config,
 if config == nil then
     error(
         "Failed to load config.json: "
-        .. tostring(config_error)
+        .. tostring(
+            config_error
+        )
     )
 end
 
 
-local display = require("display")
-local debug_display = require("debug_display")
-local network = require("network")
+local display =
+    require("display")
+
+local debug_display =
+    require("debug_display")
+
+local network =
+    require("network")
 
 
 local is_master =
     config.floor
     == config.master_floor
+
 
 local computer_id =
     os.getComputerID()
@@ -71,52 +82,188 @@ local network_update =
     config.network_update
     or 300
 
+
+local network_retry_timeout =
+    config.network_retry_timeout
+    or 5
+
+
 local display_update =
     config.display_update
     or 0.1
+
 
 local cabin_lock =
     config.cabin_lock
     or 5
 
+
 local drive_lock =
     config.drive_lock
     or 30
+
 
 local wait_time =
     config.wait
     or 30
 
+
 local wait_tries =
     config.wait_tries
     or 4
+
 
 local failure_timeout =
     config.failure_timeout
     or 5
 
+
 local elevator_check_delay_after_call =
     config.elevator_check_delay_after_call
     or 0.5
+
 
 local elevator_timeout =
     config.elevator_timeout
     or 300
 
+
 local elevator_check =
     config.elevator_check
     or 60
+
 
 local display_direction_arrow_count =
     config.display_direction_arrow_count
     or 3
 
+
 local display_direction_animation_repetitions =
     config.display_direction_animation_repetitions
     or 3
 
+
 local group_timeout =
     network_update * 2
+
+
+local NETWORK_PROBE_TIMEOUT =
+    0.75
+
+
+local function getModems()
+    local modems = {}
+
+
+    for _, name in ipairs(
+        peripheral.getNames()
+    ) do
+        if peripheral.getType(name)
+            == "modem"
+        then
+            table.insert(
+                modems,
+                name
+            )
+        end
+    end
+
+
+    return modems
+end
+
+
+local function testNetworkModem(
+    modem_name
+)
+    print(
+        "Testing modem: "
+        .. modem_name
+    )
+
+
+    rednet.open(
+        modem_name
+    )
+
+
+    network.sendNetworkProbe()
+
+
+    local timer =
+        os.startTimer(
+            NETWORK_PROBE_TIMEOUT
+        )
+
+
+    while true do
+        local event = {
+            os.pullEvent()
+        }
+
+
+        if event[1]
+            == "rednet_message"
+        then
+            local sender_id =
+                event[2]
+
+            local message =
+                event[3]
+
+            local protocol =
+                event[4]
+
+
+            if protocol
+                == network.PROTOCOL
+                and network.isNetworkProbeResponse(
+                    message
+                )
+            then
+                os.cancelTimer(
+                    timer
+                )
+
+
+                print(
+                    "Found elevator computer "
+                    .. sender_id
+                    .. " on "
+                    .. modem_name
+                )
+
+
+                return true
+            end
+
+
+            if protocol
+                == network.PROTOCOL
+                and network.isNetworkProbe(
+                    message
+                )
+            then
+                network.sendNetworkProbeResponse(
+                    sender_id
+                )
+            end
+
+
+        elseif event[1]
+            == "timer"
+            and event[2]
+                == timer
+        then
+            rednet.close(
+                modem_name
+            )
+
+
+            return false
+        end
+    end
+end
 
 
 local function findNetworkModem(
@@ -137,40 +284,31 @@ local function findNetworkModem(
         end
 
 
+        rednet.open(
+            configured_name
+        )
+
+
         return configured_name
     end
 
 
-    for _, name in ipairs(
-        peripheral.getNames()
-    ) do
-        if peripheral.getType(name)
-            == "modem"
-        then
-            local modem =
-                peripheral.wrap(
-                    name
-                )
+    local modems =
+        getModems()
 
 
-            if modem ~= nil
-                and modem.isWireless
-                    ~= nil
-                and not modem.isWireless()
-            then
-                return name
-            end
-        end
+    if #modems == 0 then
+        return nil
     end
 
 
-    for _, name in ipairs(
-        peripheral.getNames()
+    for _, modem_name in ipairs(
+        modems
     ) do
-        if peripheral.getType(name)
-            == "modem"
-        then
-            return name
+        if testNetworkModem(
+            modem_name
+        ) then
+            return modem_name
         end
     end
 
@@ -186,20 +324,31 @@ local network_modem =
 
 
 if network_modem == nil then
-    error(
-        "No network modem found"
+    print()
+
+    print(
+        "No elevator network found"
     )
+
+    print(
+        "Retrying after reboot in "
+        .. network_retry_timeout
+        .. " seconds..."
+    )
+
+
+    sleep(
+        network_retry_timeout
+    )
+
+
+    os.reboot()
 end
 
 
 print(
     "Network modem: "
     .. network_modem
-)
-
-
-rednet.open(
-    network_modem
 )
 
 
@@ -408,7 +557,8 @@ local function advanceCallAnimation()
     end
 
 
-    active_call.animation_frame = 1
+    active_call.animation_frame =
+        1
 end
 
 
@@ -420,7 +570,9 @@ local function startDirectionAnimation(
     end
 
 
-    if target_group == config.group then
+    if target_group
+        == config.group
+    then
         return false
     end
 
@@ -610,8 +762,11 @@ local function scheduleElevatorTimeout()
     end
 
 
-    if elevator_timeout < 0 then
-        timeout_until = -1
+    if elevator_timeout
+        < 0
+    then
+        timeout_until =
+            -1
 
         return
     end
@@ -621,7 +776,8 @@ local function scheduleElevatorTimeout()
         and current_floor
             == config.master_floor
     then
-        timeout_until = 0
+        timeout_until =
+            0
 
         return
     end
@@ -652,8 +808,11 @@ local function scheduleElevatorCheck()
     end
 
 
-    if elevator_check < 0 then
-        check_until = -1
+    if elevator_check
+        < 0
+    then
+        check_until =
+            -1
 
         return
     end
@@ -696,9 +855,14 @@ local function cancelCabinLock()
     end
 
 
-    if lock_mode == "cabin" then
-        lock_until = 0
-        lock_mode = nil
+    if lock_mode
+        == "cabin"
+    then
+        lock_until =
+            0
+
+        lock_mode =
+            nil
     end
 end
 
@@ -716,9 +880,14 @@ local function cancelDriveLock()
     end
 
 
-    if lock_mode == "drive" then
-        lock_until = 0
-        lock_mode = nil
+    if lock_mode
+        == "drive"
+    then
+        lock_until =
+            0
+
+        lock_mode =
+            nil
     end
 end
 
@@ -734,9 +903,14 @@ local function startDriveLock()
     cancelDriveLock()
 
 
-    if drive_lock <= 0 then
-        lock_until = 0
-        lock_mode = nil
+    if drive_lock
+        <= 0
+    then
+        lock_until =
+            0
+
+        lock_mode =
+            nil
 
 
         sendGroupStatus()
@@ -747,6 +921,7 @@ local function startDriveLock()
 
     lock_mode =
         "drive"
+
 
     lock_until =
         getTime()
@@ -797,7 +972,9 @@ local function isGroupCallable(
     end
 
 
-    if state.current_floor == nil then
+    if state.current_floor
+        == nil
+    then
         return false
     end
 
@@ -819,8 +996,11 @@ end
 
 
 local function findNearestGroup()
-    local best_group = nil
-    local best_distance = nil
+    local best_group =
+        nil
+
+    local best_distance =
+        nil
 
 
     for group, state
@@ -828,7 +1008,9 @@ local function findNearestGroup()
             known_groups
         )
     do
-        if state.current_floor ~= nil then
+        if state.current_floor
+            ~= nil
+        then
             local distance =
                 math.abs(
                     state.current_floor
@@ -836,15 +1018,22 @@ local function findNearestGroup()
                 )
 
 
-            if best_distance == nil
-                or distance < best_distance
+            if best_distance
+                == nil
+                or distance
+                    < best_distance
                 or (
-                    distance == best_distance
-                    and group == config.group
+                    distance
+                        == best_distance
+                    and group
+                        == config.group
                 )
             then
-                best_group = group
-                best_distance = distance
+                best_group =
+                    group
+
+                best_distance =
+                    distance
             end
         end
     end
@@ -916,7 +1105,9 @@ local function applyCallStatus(
     end
 
 
-    if active_call == nil then
+    if active_call
+        == nil
+    then
         return
     end
 
@@ -928,7 +1119,9 @@ local function applyCallStatus(
     end
 
 
-    if message.status == "queued" then
+    if message.status
+        == "queued"
+    then
         active_call.status =
             "queued"
 
@@ -936,7 +1129,9 @@ local function applyCallStatus(
             0
 
 
-    elseif message.status == "waiting" then
+    elseif message.status
+        == "waiting"
+    then
         active_call.status =
             "waiting"
 
@@ -945,7 +1140,9 @@ local function applyCallStatus(
             or 0
 
 
-    elseif message.status == "arrived" then
+    elseif message.status
+        == "arrived"
+    then
         local animation_started =
             startDirectionAnimation(
                 message.group
@@ -953,11 +1150,14 @@ local function applyCallStatus(
 
 
         if not animation_started then
-            active_call = nil
+            active_call =
+                nil
         end
 
 
-    elseif message.status == "failed" then
+    elseif message.status
+        == "failed"
+    then
         active_call.status =
             "failed"
 
@@ -1085,7 +1285,9 @@ local function sendElevatorSignal(
     end
 
 
-    if floor == config.floor then
+    if floor
+        == config.floor
+    then
         print(
             "Local dispatch: G"
             .. config.group
@@ -1107,7 +1309,9 @@ local function sendElevatorSignal(
         ]
 
 
-    if target_computer == nil then
+    if target_computer
+        == nil
+    then
         print(
             "ERROR: No floor controller "
             .. "registered for G"
@@ -1179,12 +1383,16 @@ end
 
 
 local function startRequestWait()
-    if pending_request == nil then
+    if pending_request
+        == nil
+    then
         return
     end
 
 
-    if request_wait_timer ~= nil then
+    if request_wait_timer
+        ~= nil
+    then
         os.cancelTimer(
             request_wait_timer
         )
@@ -1212,7 +1420,9 @@ end
 
 
 local function failPendingRequest()
-    if pending_request == nil then
+    if pending_request
+        == nil
+    then
         return
     end
 
@@ -1231,8 +1441,11 @@ local function failPendingRequest()
     )
 
 
-    pending_request = nil
-    busy = false
+    pending_request =
+        nil
+
+    busy =
+        false
 
 
     cancelDriveLock()
@@ -1246,7 +1459,8 @@ end
 local function dispatchRequest(
     request
 )
-    if current_floor == request.floor
+    if current_floor
+        == request.floor
         and not busy
     then
         publishCallStatus(
@@ -1261,10 +1475,13 @@ local function dispatchRequest(
     end
 
 
-    busy = true
+    busy =
+        true
+
 
     pending_request =
         request
+
 
     pending_request.retries_remaining =
         wait_tries
@@ -1311,7 +1528,9 @@ local function processQueue()
     end
 
 
-    while #call_queue > 0 do
+    while #call_queue
+        > 0
+    do
         local request =
             table.remove(
                 call_queue,
@@ -1355,7 +1574,8 @@ local function acceptElevatorRequest(
     end
 
 
-    if pending_request ~= nil
+    if pending_request
+        ~= nil
         and pending_request.request_id
             == request.request_id
     then
@@ -1376,7 +1596,9 @@ end
 
 
 local function requestElevator()
-    if active_call ~= nil then
+    if active_call
+        ~= nil
+    then
         if active_call.status
             ~= "failed"
         then
@@ -1497,7 +1719,8 @@ local function startCabinLock(
 
 
     if duration < 0 then
-        duration = 0
+        duration =
+            0
     end
 
 
@@ -1507,8 +1730,11 @@ local function startCabinLock(
 
 
     if duration == 0 then
-        lock_until = 0
-        lock_mode = nil
+        lock_until =
+            0
+
+        lock_mode =
+            nil
 
 
         sendGroupStatus()
@@ -1549,7 +1775,9 @@ end
 local function completePendingRequest(
     floor
 )
-    if pending_request == nil then
+    if pending_request
+        == nil
+    then
         return
     end
 
@@ -1561,7 +1789,9 @@ local function completePendingRequest(
     end
 
 
-    if request_wait_timer ~= nil then
+    if request_wait_timer
+        ~= nil
+    then
         os.cancelTimer(
             request_wait_timer
         )
@@ -1585,7 +1815,8 @@ local function completePendingRequest(
     )
 
 
-    pending_request = nil
+    pending_request =
+        nil
 end
 
 
@@ -1601,7 +1832,8 @@ local function handleMasterFloorState(
 
     if active then
         local changed =
-            current_floor ~= floor
+            current_floor
+                ~= floor
             or busy
 
 
@@ -1613,8 +1845,11 @@ local function handleMasterFloorState(
         cancelDriveLock()
 
 
-        current_floor = floor
-        busy = false
+        current_floor =
+            floor
+
+        busy =
+            false
 
 
         completePendingRequest(
@@ -1642,8 +1877,11 @@ local function handleMasterFloorState(
     end
 
 
-    if current_floor == floor then
-        current_floor = nil
+    if current_floor
+        == floor
+    then
+        current_floor =
+            nil
 
 
         print(
@@ -1656,9 +1894,7 @@ local function handleMasterFloorState(
 
         startDriveLock()
 
-
         resetElevatorStatusTimers()
-
 
         sendGroupStatus()
     end
@@ -1672,7 +1908,9 @@ local function processElevatorInput()
         )
 
 
-    if new_state == elevator_here then
+    if new_state
+        == elevator_here
+    then
         return
     end
 
@@ -1716,10 +1954,13 @@ end
 
 
 local function handleRequestTimeout()
-    request_wait_timer = nil
+    request_wait_timer =
+        nil
 
 
-    if pending_request == nil then
+    if pending_request
+        == nil
+    then
         return
     end
 
@@ -1801,10 +2042,13 @@ end
 
 
 local function handleElevatorTimeout()
-    elevator_timeout_timer = nil
+    elevator_timeout_timer =
+        nil
 
 
-    if timeout_until <= 0 then
+    if timeout_until
+        <= 0
+    then
         return
     end
 
@@ -1818,7 +2062,8 @@ local function handleElevatorTimeout()
     local should_return =
         not busy
         and (
-            current_floor == nil
+            current_floor
+                == nil
             or current_floor
                 ~= config.master_floor
         )
@@ -1855,7 +2100,8 @@ end
 
 
 local function handleElevatorPositionCheck()
-    elevator_position_check_timer = nil
+    elevator_position_check_timer =
+        nil
 
 
     print(
@@ -1923,7 +2169,8 @@ local function handleFloorRegister(
 
     floor_controllers[
         message.floor
-    ] = sender_id
+    ] =
+        sender_id
 
 
     print(
@@ -1988,12 +2235,25 @@ local function handleFloorStateRequest(
     end
 
 
+    local actual_state =
+        redstone.getInput(
+            config.elevator_contact
+        )
+
+
+    elevator_here =
+        actual_state
+
+
     network.sendFloorState(
         config.group,
         config.floor,
-        elevator_here,
+        actual_state,
         cabin_lock
     )
+
+
+    updateDisplays()
 end
 
 
@@ -2099,6 +2359,15 @@ local function handleCallStatus(
 end
 
 
+local function handleNetworkProbe(
+    sender_id
+)
+    network.sendNetworkProbeResponse(
+        sender_id
+    )
+end
+
+
 local function handleNetworkMessage(
     event
 )
@@ -2112,7 +2381,27 @@ local function handleNetworkMessage(
         event[4]
 
 
-    if protocol ~= network.PROTOCOL then
+    if protocol
+        ~= network.PROTOCOL
+    then
+        return
+    end
+
+
+    if network.isNetworkProbe(
+        message
+    ) then
+        handleNetworkProbe(
+            sender_id
+        )
+
+        return
+    end
+
+
+    if network.isNetworkProbeResponse(
+        message
+    ) then
         return
     end
 
@@ -2238,7 +2527,9 @@ local function handleTimer(
         )
 
 
-        elevator_pulse_timer = nil
+        elevator_pulse_timer =
+            nil
+
 
         return
     end
@@ -2247,12 +2538,15 @@ local function handleTimer(
     if timer_id
         == elevator_check_delay_timer
     then
-        elevator_check_delay_timer = nil
+        elevator_check_delay_timer =
+            nil
 
-        elevator_check_blocked = false
+        elevator_check_blocked =
+            false
 
 
         processElevatorInput()
+
 
         return
     end
@@ -2263,6 +2557,7 @@ local function handleTimer(
     then
         handleRequestTimeout()
 
+
         return
     end
 
@@ -2270,12 +2565,18 @@ local function handleTimer(
     if timer_id
         == cabin_lock_timer
     then
-        cabin_lock_timer = nil
+        cabin_lock_timer =
+            nil
 
 
-        if lock_mode == "cabin" then
-            lock_mode = nil
-            lock_until = 0
+        if lock_mode
+            == "cabin"
+        then
+            lock_mode =
+                nil
+
+            lock_until =
+                0
 
 
             print(
@@ -2296,12 +2597,18 @@ local function handleTimer(
     if timer_id
         == drive_lock_timer
     then
-        drive_lock_timer = nil
+        drive_lock_timer =
+            nil
 
 
-        if lock_mode == "drive" then
-            lock_mode = nil
-            lock_until = 0
+        if lock_mode
+            == "drive"
+        then
+            lock_mode =
+                nil
+
+            lock_until =
+                0
 
 
             print(
@@ -2324,6 +2631,7 @@ local function handleTimer(
     then
         handleElevatorTimeout()
 
+
         return
     end
 
@@ -2333,6 +2641,7 @@ local function handleTimer(
     then
         handleElevatorPositionCheck()
 
+
         return
     end
 
@@ -2340,7 +2649,8 @@ local function handleTimer(
     if timer_id
         == master_sync_timer
     then
-        master_sync_timer = nil
+        master_sync_timer =
+            nil
 
 
         network.requestFloorStates(
@@ -2354,6 +2664,7 @@ local function handleTimer(
 
 
         network.requestGroups()
+
 
         return
     end
@@ -2371,6 +2682,7 @@ local function handleTimer(
             os.startTimer(
                 display_update
             )
+
 
         return
     end
@@ -2417,7 +2729,8 @@ local function initializeMaster()
 
     floor_controllers[
         config.floor
-    ] = computer_id
+    ] =
+        computer_id
 
 
     if elevator_here then
@@ -2499,15 +2812,18 @@ print(
     "Floor controller started"
 )
 
+
 print(
     "Computer ID: "
     .. computer_id
 )
 
+
 print(
     "Group: "
     .. config.group
 )
+
 
 print(
     "Floor: "
@@ -2537,7 +2853,9 @@ while true do
     }
 
 
-    if event[1] == "redstone" then
+    if event[1]
+        == "redstone"
+    then
         handleRedstone()
 
 
@@ -2557,7 +2875,9 @@ while true do
         )
 
 
-    elseif event[1] == "timer" then
+    elseif event[1]
+        == "timer"
+    then
         handleTimer(
             event[2]
         )

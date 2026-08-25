@@ -19,6 +19,8 @@ config.defaults = {
     debug_display_side = textutils.json_null,
 
     network_update = 300,
+    network_retry_timeout = 5,
+
     display_update = 0.1,
 
     cabin_lock = 5,
@@ -75,6 +77,8 @@ config.advance = {
     "debug_display_side",
 
     "network_update",
+    "network_retry_timeout",
+
     "display_update",
 
     "cabin_lock",
@@ -127,6 +131,7 @@ end
 local function mergeDefaults(values)
     local result = {}
 
+
     for key, default_value in pairs(
         config.defaults
     ) do
@@ -134,6 +139,7 @@ local function mergeDefaults(values)
             normalizeValue(
                 default_value
             )
+
 
         if value ~= nil then
             result[key] = value
@@ -146,6 +152,7 @@ local function mergeDefaults(values)
             normalizeValue(
                 value
             )
+
 
         if normalized_value == nil then
             result[key] = nil
