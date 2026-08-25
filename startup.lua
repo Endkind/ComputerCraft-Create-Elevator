@@ -83,11 +83,6 @@ local network_update =
     or 300
 
 
-local network_retry_timeout =
-    config.network_retry_timeout
-    or 5
-
-
 local display_update =
     config.display_update
     or 0.1
@@ -151,20 +146,59 @@ local NETWORK_PROBE_TIMEOUT =
     0.75
 
 
-local function getModems()
+local function createDiscoveryNonce()
+    return tostring(
+        computer_id
+    )
+        .. "-"
+        .. tostring(
+            os.epoch("utc")
+        )
+        .. "-"
+        .. tostring(
+            math.random(
+                100000,
+                999999
+            )
+        )
+end
+
+
+local function getLocalModems()
     local modems = {}
 
 
-    for _, name in ipairs(
-        peripheral.getNames()
+    -- Prefer modems which are directly attached
+    -- to the computer.
+    for _, side in ipairs(
+        redstone.getSides()
     ) do
-        if peripheral.getType(name)
+        if peripheral.getType(side)
             == "modem"
         then
             table.insert(
                 modems,
-                name
+                side
             )
+        end
+    end
+
+
+    -- Normally all relevant modems are directly
+    -- attached. This fallback also supports unusual
+    -- peripheral setups.
+    if #modems == 0 then
+        for _, name in ipairs(
+            peripheral.getNames()
+        ) do
+            if peripheral.getType(name)
+                == "modem"
+            then
+                table.insert(
+                    modems,
+                    name
+                )
+            end
         end
     end
 
@@ -173,21 +207,198 @@ local function getModems()
 end
 
 
+local function getModem(
+    modem_name
+)
+    if modem_name == nil then
+        return nil
+    end
+
+
+    if peripheral.getType(
+        modem_name
+    ) ~= "modem"
+    then
+        return nil
+    end
+
+
+    return peripheral.wrap(
+        modem_name
+    )
+end
+
+
+local function openDiscoveryChannel(
+    modem_name
+)
+    local modem =
+        getModem(
+            modem_name
+        )
+
+
+    if modem == nil then
+        return false
+    end
+
+
+    modem.open(
+        network.DISCOVERY_CHANNEL
+    )
+
+
+    return true
+end
+
+
+local function openDiscoveryReplyChannel(
+    modem_name
+)
+    local modem =
+        getModem(
+            modem_name
+        )
+
+
+    if modem == nil then
+        return false
+    end
+
+
+    modem.open(
+        network.DISCOVERY_REPLY_CHANNEL
+    )
+
+
+    return true
+end
+
+
+local function closeDiscoveryChannels(
+    modem_name
+)
+    local modem =
+        getModem(
+            modem_name
+        )
+
+
+    if modem == nil then
+        return
+    end
+
+
+    modem.close(
+        network.DISCOVERY_CHANNEL
+    )
+
+
+    modem.close(
+        network.DISCOVERY_REPLY_CHANNEL
+    )
+end
+
+
+local function closeDiscoveryChannelsExcept(
+    modems,
+    selected_modem
+)
+    for _, modem_name in ipairs(
+        modems
+    ) do
+        if modem_name
+            ~= selected_modem
+        then
+            closeDiscoveryChannels(
+                modem_name
+            )
+        end
+    end
+end
+
+
+local function sendDiscoveryProbe(
+    modem_name,
+    nonce
+)
+    local modem =
+        getModem(
+            modem_name
+        )
+
+
+    if modem == nil then
+        return false
+    end
+
+
+    modem.transmit(
+        network.DISCOVERY_CHANNEL,
+        network.DISCOVERY_REPLY_CHANNEL,
+        network.createDiscoveryProbeWithNonce(
+            computer_id,
+            nonce
+        )
+    )
+
+
+    return true
+end
+
+
+local function sendDiscoveryResponse(
+    modem_name,
+    reply_channel,
+    nonce
+)
+    local modem =
+        getModem(
+            modem_name
+        )
+
+
+    if modem == nil then
+        return false
+    end
+
+
+    modem.transmit(
+        reply_channel,
+        network.DISCOVERY_CHANNEL,
+        network.createDiscoveryResponse(
+            computer_id,
+            nonce
+        )
+    )
+
+
+    return true
+end
+
+
 local function testNetworkModem(
     modem_name
 )
+    local nonce =
+        createDiscoveryNonce()
+
+
     print(
         "Testing modem: "
         .. modem_name
     )
 
 
-    rednet.open(
+    openDiscoveryReplyChannel(
         modem_name
     )
 
 
-    network.sendNetworkProbe()
+    sendDiscoveryProbe(
+        modem_name,
+        nonce
+    )
 
 
     local timer =
@@ -203,23 +414,29 @@ local function testNetworkModem(
 
 
         if event[1]
-            == "rednet_message"
+            == "modem_message"
         then
-            local sender_id =
+            local side =
                 event[2]
 
-            local message =
+            local channel =
                 event[3]
 
-            local protocol =
-                event[4]
+            local message =
+                event[5]
 
 
-            if protocol
-                == network.PROTOCOL
-                and network.isNetworkProbeResponse(
+            if side
+                    == modem_name
+                and channel
+                    == network.DISCOVERY_REPLY_CHANNEL
+                and network.isDiscoveryResponse(
                     message
                 )
+                and message.nonce
+                    == nonce
+                and message.computer_id
+                    ~= computer_id
             then
                 os.cancelTimer(
                     timer
@@ -227,26 +444,14 @@ local function testNetworkModem(
 
 
                 print(
-                    "Found elevator computer "
-                    .. sender_id
-                    .. " on "
+                    "Elevator network found on "
                     .. modem_name
+                    .. " via computer "
+                    .. message.computer_id
                 )
 
 
                 return true
-            end
-
-
-            if protocol
-                == network.PROTOCOL
-                and network.isNetworkProbe(
-                    message
-                )
-            then
-                network.sendNetworkProbeResponse(
-                    sender_id
-                )
             end
 
 
@@ -255,7 +460,7 @@ local function testNetworkModem(
             and event[2]
                 == timer
         then
-            rednet.close(
+            closeDiscoveryChannels(
                 modem_name
             )
 
@@ -266,42 +471,9 @@ local function testNetworkModem(
 end
 
 
-local function findNetworkModem(
-    configured_name
+local function findActiveNetwork(
+    modems
 )
-    if configured_name ~= nil then
-        if peripheral.getType(
-            configured_name
-        ) ~= "modem"
-        then
-            error(
-                "Configured network peripheral '"
-                .. tostring(
-                    configured_name
-                )
-                .. "' is not a modem"
-            )
-        end
-
-
-        rednet.open(
-            configured_name
-        )
-
-
-        return configured_name
-    end
-
-
-    local modems =
-        getModems()
-
-
-    if #modems == 0 then
-        return nil
-    end
-
-
     for _, modem_name in ipairs(
         modems
     ) do
@@ -317,39 +489,404 @@ local function findNetworkModem(
 end
 
 
-local network_modem =
-    findNetworkModem(
-        config.network_side
-    )
-
-
-if network_modem == nil then
+local function waitForManualNetworkSelection()
     print()
 
     print(
-        "No elevator network found"
+        "No active elevator network found."
     )
+
 
     print(
-        "Retrying after reboot in "
-        .. network_retry_timeout
-        .. " seconds..."
+        "Press ENTER within "
+        .. failure_timeout
+        .. " seconds to select a modem manually."
     )
 
 
-    sleep(
-        network_retry_timeout
-    )
+    local timer =
+        os.startTimer(
+            failure_timeout
+        )
 
 
-    os.reboot()
+    while true do
+        local event = {
+            os.pullEvent()
+        }
+
+
+        if event[1]
+            == "key"
+            and event[2]
+                == keys.enter
+        then
+            os.cancelTimer(
+                timer
+            )
+
+
+            return true
+        end
+
+
+        if event[1]
+            == "timer"
+            and event[2]
+                == timer
+        then
+            return false
+        end
+    end
 end
 
 
-print(
-    "Network modem: "
-    .. network_modem
+local function selectModemManually(
+    modems
 )
+    print()
+
+    print(
+        "Available modems:"
+    )
+
+
+    for index, modem_name in ipairs(
+        modems
+    ) do
+        print(
+            tostring(index)
+            .. ". "
+            .. modem_name
+        )
+    end
+
+
+    print()
+
+
+    while true do
+        write(
+            "Select modem: "
+        )
+
+
+        local input =
+            read()
+
+
+        local index =
+            tonumber(
+                input
+            )
+
+
+        if index ~= nil
+            and index >= 1
+            and index <= #modems
+        then
+            return modems[
+                index
+            ]
+        end
+
+
+        print(
+            "Invalid modem selection"
+        )
+    end
+end
+
+
+local function saveSelectedNetworkModem(
+    modem_name
+)
+    config.network_side =
+        modem_name
+
+
+    local success,
+        error_message =
+        config_module.save(
+            config
+        )
+
+
+    if not success then
+        error(
+            "Failed to save network_side: "
+            .. tostring(
+                error_message
+            )
+        )
+    end
+
+
+    print(
+        "Saved network_side: "
+        .. modem_name
+    )
+end
+
+
+local function bootstrapMasterNetwork(
+    modems
+)
+    print()
+
+    print(
+        "Starting elevator network bootstrap..."
+    )
+
+
+    for _, modem_name in ipairs(
+        modems
+    ) do
+        openDiscoveryChannel(
+            modem_name
+        )
+
+
+        print(
+            "Bootstrap listening on "
+            .. modem_name
+        )
+    end
+
+
+    print()
+
+    print(
+        "Waiting for another elevator computer..."
+    )
+
+
+    while true do
+        local event = {
+            os.pullEvent()
+        }
+
+
+        if event[1]
+            == "modem_message"
+        then
+            local side =
+                event[2]
+
+            local channel =
+                event[3]
+
+            local reply_channel =
+                event[4]
+
+            local message =
+                event[5]
+
+
+            if channel
+                    == network.DISCOVERY_CHANNEL
+                and network.isDiscoveryProbe(
+                    message
+                )
+                and message.computer_id
+                    ~= computer_id
+            then
+                print(
+                    "Computer "
+                    .. message.computer_id
+                    .. " joined via "
+                    .. side
+                )
+
+
+                sendDiscoveryResponse(
+                    side,
+                    reply_channel,
+                    message.nonce
+                )
+
+
+                closeDiscoveryChannelsExcept(
+                    modems,
+                    side
+                )
+
+
+                return side
+            end
+        end
+    end
+end
+
+
+local function activateNetworkModem(
+    modem_name
+)
+    closeDiscoveryChannels(
+        modem_name
+    )
+
+
+    rednet.open(
+        modem_name
+    )
+
+
+    openDiscoveryChannel(
+        modem_name
+    )
+
+
+    print(
+        "Network modem: "
+        .. modem_name
+    )
+end
+
+
+local function initializeNetwork()
+    local modems =
+        getLocalModems()
+
+
+    if config.network_side
+        ~= nil
+    then
+        if getModem(
+            config.network_side
+        ) == nil
+        then
+            error(
+                "Configured network peripheral '"
+                .. tostring(
+                    config.network_side
+                )
+                .. "' is not a modem"
+            )
+        end
+
+
+        activateNetworkModem(
+            config.network_side
+        )
+
+
+        return config.network_side
+    end
+
+
+    if #modems == 0 then
+        print(
+            "No modem found"
+        )
+
+
+        print(
+            "Rebooting in "
+            .. failure_timeout
+            .. " seconds..."
+        )
+
+
+        sleep(
+            failure_timeout
+        )
+
+
+        os.reboot()
+    end
+
+
+    local active_modem =
+        findActiveNetwork(
+            modems
+        )
+
+
+    if active_modem
+        ~= nil
+    then
+        closeDiscoveryChannelsExcept(
+            modems,
+            active_modem
+        )
+
+
+        activateNetworkModem(
+            active_modem
+        )
+
+
+        return active_modem
+    end
+
+
+    if not is_master then
+        print()
+
+        print(
+            "No active elevator network found."
+        )
+
+
+        print(
+            "Rebooting in "
+            .. failure_timeout
+            .. " seconds..."
+        )
+
+
+        sleep(
+            failure_timeout
+        )
+
+
+        os.reboot()
+    end
+
+
+    local manual_selection =
+        waitForManualNetworkSelection()
+
+
+    if manual_selection then
+        local selected_modem =
+            selectModemManually(
+                modems
+            )
+
+
+        saveSelectedNetworkModem(
+            selected_modem
+        )
+
+
+        activateNetworkModem(
+            selected_modem
+        )
+
+
+        return selected_modem
+    end
+
+
+    local bootstrap_modem =
+        bootstrapMasterNetwork(
+            modems
+        )
+
+
+    activateNetworkModem(
+        bootstrap_modem
+    )
+
+
+    return bootstrap_modem
+end
+
+
+local network_modem =
+    initializeNetwork()
 
 
 local elevator_here =
@@ -363,46 +900,64 @@ local known_groups = {}
 local floor_controllers = {}
 
 
-local current_floor = nil
+local current_floor =
+    nil
 
-local busy = false
+local busy =
+    false
 
-local lock_until = 0
+local lock_until =
+    0
 
-local lock_mode = nil
-
-
-local timeout_until = -1
-
-local check_until = -1
+local lock_mode =
+    nil
 
 
-local pending_request = nil
+local timeout_until =
+    -1
+
+local check_until =
+    -1
+
+
+local pending_request =
+    nil
 
 local call_queue = {}
 
-local active_call = nil
+local active_call =
+    nil
 
 
-local heartbeat_timer = nil
+local heartbeat_timer =
+    nil
 
-local master_sync_timer = nil
+local master_sync_timer =
+    nil
 
-local elevator_pulse_timer = nil
+local elevator_pulse_timer =
+    nil
 
-local elevator_check_delay_timer = nil
+local elevator_check_delay_timer =
+    nil
 
-local cabin_lock_timer = nil
+local cabin_lock_timer =
+    nil
 
-local drive_lock_timer = nil
+local drive_lock_timer =
+    nil
 
-local display_timer = nil
+local display_timer =
+    nil
 
-local request_wait_timer = nil
+local request_wait_timer =
+    nil
 
-local elevator_timeout_timer = nil
+local elevator_timeout_timer =
+    nil
 
-local elevator_position_check_timer = nil
+local elevator_position_check_timer =
+    nil
 
 
 local elevator_check_blocked =
@@ -478,7 +1033,8 @@ local function cleanupActiveCall()
     end
 
 
-    active_call = nil
+    active_call =
+        nil
 end
 
 
@@ -520,7 +1076,8 @@ local function advanceCallAnimation()
 
 
     if arrow_count < 1 then
-        arrow_count = 1
+        arrow_count =
+            1
     end
 
 
@@ -551,7 +1108,8 @@ local function advanceCallAnimation()
         active_call.animation_active =
             false
 
-        active_call = nil
+        active_call =
+            nil
 
         return
     end
@@ -716,11 +1274,9 @@ local function removeExpiredGroups()
         false
 
 
-    for group, state
-        in pairs(
-            known_groups
-        )
-    do
+    for group, state in pairs(
+        known_groups
+    ) do
         if group
             ~= config.group
             and now
@@ -762,9 +1318,7 @@ local function scheduleElevatorTimeout()
     end
 
 
-    if elevator_timeout
-        < 0
-    then
+    if elevator_timeout < 0 then
         timeout_until =
             -1
 
@@ -808,9 +1362,7 @@ local function scheduleElevatorCheck()
     end
 
 
-    if elevator_check
-        < 0
-    then
+    if elevator_check < 0 then
         check_until =
             -1
 
@@ -903,9 +1455,7 @@ local function startDriveLock()
     cancelDriveLock()
 
 
-    if drive_lock
-        <= 0
-    then
+    if drive_lock <= 0 then
         lock_until =
             0
 
@@ -1003,11 +1553,9 @@ local function findNearestGroup()
         nil
 
 
-    for group, state
-        in pairs(
-            known_groups
-        )
-    do
+    for group, state in pairs(
+        known_groups
+    ) do
         if state.current_floor
             ~= nil
         then
@@ -1052,6 +1600,7 @@ local function chooseElevatorGroup()
         print(
             "All elevator positions unknown"
         )
+
 
         print(
             "Using own group G"
@@ -2359,11 +2908,54 @@ local function handleCallStatus(
 end
 
 
-local function handleNetworkProbe(
-    sender_id
+local function handleDiscoveryMessage(
+    event
 )
-    network.sendNetworkProbeResponse(
-        sender_id
+    local side =
+        event[2]
+
+    local channel =
+        event[3]
+
+    local reply_channel =
+        event[4]
+
+    local message =
+        event[5]
+
+
+    if side
+        ~= network_modem
+    then
+        return
+    end
+
+
+    if channel
+        ~= network.DISCOVERY_CHANNEL
+    then
+        return
+    end
+
+
+    if not network.isDiscoveryProbe(
+        message
+    ) then
+        return
+    end
+
+
+    if message.computer_id
+        == computer_id
+    then
+        return
+    end
+
+
+    sendDiscoveryResponse(
+        network_modem,
+        reply_channel,
+        message.nonce
     )
 end
 
@@ -2384,24 +2976,6 @@ local function handleNetworkMessage(
     if protocol
         ~= network.PROTOCOL
     then
-        return
-    end
-
-
-    if network.isNetworkProbe(
-        message
-    ) then
-        handleNetworkProbe(
-            sender_id
-        )
-
-        return
-    end
-
-
-    if network.isNetworkProbeResponse(
-        message
-    ) then
         return
     end
 
@@ -2871,6 +3445,14 @@ while true do
         == "rednet_message"
     then
         handleNetworkMessage(
+            event
+        )
+
+
+    elseif event[1]
+        == "modem_message"
+    then
+        handleDiscoveryMessage(
             event
         )
 

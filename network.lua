@@ -7,28 +7,72 @@ network.PROTOCOL =
     "elevator"
 
 
-function network.sendNetworkProbe()
-    rednet.broadcast(
-        {
-            type =
-                "network_probe"
-        },
-        network.PROTOCOL
-    )
+network.DISCOVERY_CHANNEL =
+    42420
+
+network.DISCOVERY_REPLY_CHANNEL =
+    42421
+
+
+function network.createDiscoveryProbe(
+    computer_id
+)
+    return {
+        type = "elevator_discovery_probe",
+        computer_id = computer_id
+    }
 end
 
 
-function network.sendNetworkProbeResponse(
-    computer_id
+function network.createDiscoveryResponse(
+    computer_id,
+    nonce
 )
-    rednet.send(
-        computer_id,
-        {
-            type =
-                "network_probe_response"
-        },
-        network.PROTOCOL
-    )
+    return {
+        type = "elevator_discovery_response",
+        computer_id = computer_id,
+        nonce = nonce
+    }
+end
+
+
+function network.createDiscoveryProbeWithNonce(
+    computer_id,
+    nonce
+)
+    return {
+        type = "elevator_discovery_probe",
+        computer_id = computer_id,
+        nonce = nonce
+    }
+end
+
+
+function network.isDiscoveryProbe(
+    message
+)
+    return type(message)
+        == "table"
+        and message.type
+            == "elevator_discovery_probe"
+        and type(message.computer_id)
+            == "number"
+        and type(message.nonce)
+            == "string"
+end
+
+
+function network.isDiscoveryResponse(
+    message
+)
+    return type(message)
+        == "table"
+        and message.type
+            == "elevator_discovery_response"
+        and type(message.computer_id)
+            == "number"
+        and type(message.nonce)
+            == "string"
 end
 
 
@@ -172,27 +216,9 @@ function network.sendCallStatus(
 end
 
 
-function network.isNetworkProbe(
+function network.isFloorState(
     message
 )
-    return type(message)
-        == "table"
-        and message.type
-            == "network_probe"
-end
-
-
-function network.isNetworkProbeResponse(
-    message
-)
-    return type(message)
-        == "table"
-        and message.type
-            == "network_probe_response"
-end
-
-
-function network.isFloorState(message)
     return type(message) == "table"
         and message.type == "floor_state"
         and type(message.group) == "number"
@@ -202,14 +228,18 @@ function network.isFloorState(message)
 end
 
 
-function network.isFloorStateRequest(message)
+function network.isFloorStateRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "request_floor_states"
         and type(message.group) == "number"
 end
 
 
-function network.isFloorRegister(message)
+function network.isFloorRegister(
+    message
+)
     return type(message) == "table"
         and message.type == "floor_register"
         and type(message.group) == "number"
@@ -217,14 +247,18 @@ function network.isFloorRegister(message)
 end
 
 
-function network.isFloorRegistrationRequest(message)
+function network.isFloorRegistrationRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "request_floor_registrations"
         and type(message.group) == "number"
 end
 
 
-function network.isGroupStatus(message)
+function network.isGroupStatus(
+    message
+)
     if type(message) ~= "table" then
         return false
     end
@@ -259,20 +293,26 @@ function network.isGroupStatus(message)
 end
 
 
-function network.isGroupRequest(message)
+function network.isGroupRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "request_groups"
 end
 
 
-function network.isRebootRequest(message)
+function network.isRebootRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "reboot_floors"
         and type(message.group) == "number"
 end
 
 
-function network.isElevatorRequest(message)
+function network.isElevatorRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "elevator_request"
         and type(message.group) == "number"
@@ -282,7 +322,9 @@ function network.isElevatorRequest(message)
 end
 
 
-function network.isElevatorDispatch(message)
+function network.isElevatorDispatch(
+    message
+)
     return type(message) == "table"
         and message.type == "dispatch_elevator"
         and type(message.group) == "number"
@@ -290,7 +332,9 @@ function network.isElevatorDispatch(message)
 end
 
 
-function network.isCallStatus(message)
+function network.isCallStatus(
+    message
+)
     return type(message) == "table"
         and message.type == "call_status"
         and type(message.requester_id) == "number"
