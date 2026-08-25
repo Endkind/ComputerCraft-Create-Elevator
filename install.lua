@@ -9,7 +9,9 @@ local files = {
     "config.lua",
     "network.lua",
     "display.lua",
-    "debug_display.lua"
+    "debug_display.lua",
+    "LICENSE",
+    "README.md"
 }
 
 
