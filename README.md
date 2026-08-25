@@ -15,7 +15,10 @@ It supports:
 * Automatic return to the master floor
 * Automatic elevator position checks
 * Wired modem networking
-* Automatic modem detection
+* Automatic elevator network discovery
+* Automatic modem selection
+* Master network bootstrap
+* Manual modem selection fallback
 * Automatic monitor detection
 * Optional debug monitor
 * Configurable display colors
@@ -23,19 +26,20 @@ It supports:
 * Direction animation when another elevator group serves the floor
 * Automatic configuration generation
 * Interactive installer
+* Optional installer branch selection
 
 ## Requirements
 
 * Minecraft with CC:Tweaked
 * Create
 * One ComputerCraft computer per floor
-* Wired Modems connecting all floor computers
+* Wired Modems connecting the elevator computers
 * A monitor for the CALL interface
 * Redstone connection between the computer and the Create elevator contact
 
 ## Installation
 
-Run the following command on every floor computer:
+Download the installer on every floor computer:
 
 ```text
 wget https://raw.githubusercontent.com/Endkind/ComputerCraft-Create-Elevator/refs/heads/main/install.lua
@@ -49,13 +53,37 @@ install
 
 The installer downloads all required files and creates a fresh `config.json`.
 
-After installation you have 5 seconds to press Enter if you want to configure the floor.
+The installer also uses cache-busting download URLs to reduce the chance of receiving outdated files from a GitHub CDN cache.
+
+### Installing from another branch
+
+By default, the installer downloads files from the `main` branch.
+
+You can optionally specify another branch:
+
+```text
+install dev
+```
+
+For example:
+
+```text
+install feature/network-discovery
+```
+
+Running the installer without an argument is equivalent to:
+
+```text
+install main
+```
+
+## Installer Configuration
+
+After installation you have 5 seconds to press Enter if you want to configure the computer.
 
 If no input is made, the installer keeps the default configuration and reboots automatically.
 
-## Configuration Modes
-
-When entering the configuration, the installer provides three modes:
+When entering the configuration, the installer provides three modes.
 
 ### default
 
@@ -158,6 +186,8 @@ A second elevator could use the same floor numbers but a different group:
 }
 ```
 
+Each elevator group has its own master.
+
 ## Networking
 
 By default:
@@ -166,17 +196,156 @@ By default:
 "network_side": null
 ```
 
-The program automatically searches for a modem.
+This enables automatic elevator network discovery.
 
-A wired modem is preferred.
+The program does not simply select the first modem it finds.
 
-You may also specify a modem explicitly:
+Instead, it searches the available modems for another computer already running the elevator system.
 
-```json
-"network_side": "top"
+This is useful when a computer has multiple modem connections, for example:
+
+```text
+left  -> elevator computer network
+right -> remote monitor network
 ```
 
-All elevator computers should be connected to the same Wired Modem network.
+The program will try to identify the modem connected to the actual elevator network instead of accidentally using the monitor network.
+
+### Explicit Network Modem
+
+You can disable automatic network discovery by specifying the modem manually:
+
+```json
+"network_side": "left"
+```
+
+In this case the configured modem is used directly.
+
+A modem selected manually during the master bootstrap process is also stored in `config.json`.
+
+## Automatic Elevator Network Discovery
+
+When `network_side` is `null`, computers use a dedicated discovery protocol before starting normal elevator communication.
+
+The discovery protocol uses raw modem messages so the program can determine exactly which modem received a response.
+
+Once the correct modem has been identified, normal elevator communication uses Rednet.
+
+### Existing Network
+
+If another elevator computer is already online, the new computer searches all available modems.
+
+The first modem on which an active elevator computer responds becomes the network modem.
+
+Example:
+
+```text
+Computer starts
+    |
+    +-- right modem -> no elevator response
+    |
+    +-- left modem  -> elevator computer responds
+                         |
+                         +-- left selected
+```
+
+## Master Network Bootstrap
+
+The first master computer may start before any other elevator computer exists.
+
+In that case there is no existing elevator network to discover.
+
+If the master cannot find an active elevator network, it offers a manual modem selection for `failure_timeout` seconds.
+
+With the default configuration:
+
+```json
+"failure_timeout": 5
+```
+
+the master displays a message similar to:
+
+```text
+No active elevator network found.
+Press ENTER within 5 seconds to select a modem manually.
+```
+
+### Manual Selection
+
+If Enter is pressed, all available modems are displayed.
+
+For example:
+
+```text
+Available modems:
+
+1. left
+2. right
+
+Select modem:
+```
+
+The selected modem is then:
+
+* Used as the elevator network modem
+* Saved permanently to `config.json` as `network_side`
+
+For example:
+
+```json
+"network_side": "left"
+```
+
+Future starts will then use that modem directly without automatic discovery.
+
+### Automatic Bootstrap
+
+If no manual selection is made before the timeout expires, the master enters automatic bootstrap mode.
+
+The master temporarily listens for elevator discovery requests on every available modem.
+
+Example:
+
+```text
+Master
+  |
+  +-- left modem  -> waiting
+  |
+  +-- right modem -> waiting
+```
+
+When another elevator computer starts and sends a discovery request, the master can determine which modem received it.
+
+For example:
+
+```text
+Master
+  |
+  +-- left modem  <- Floor -20 joins
+  |
+  +-- right modem -> no elevator traffic
+```
+
+The master then:
+
+1. Selects the modem where the first elevator computer joined
+2. Closes discovery on the other modems
+3. Uses the selected modem as its elevator network
+4. Continues normal startup
+
+The automatically selected bootstrap modem is **not written to `config.json`**.
+
+This allows the network to be discovered again after future wiring changes.
+
+## Non-Master Network Startup
+
+Normal floor computers do not create new elevator networks.
+
+They search for an existing elevator network.
+
+If no elevator network can be found, the computer waits for `failure_timeout` seconds and reboots.
+
+This allows a master currently waiting in bootstrap mode to be discovered when the floor computer starts again.
 
 ## Displays
 
@@ -228,7 +397,16 @@ or:
 "debug_display_side": "monitor_13"
 ```
 
-When the main display uses automatic detection, the configured debug monitor is excluded from the search and cannot accidentally become the CALL display.
+When the main display uses automatic detection, the configured debug monitor is excluded from the search.
+
+For example:
+
+```json
+"display_side": null,
+"debug_display_side": "top"
+```
+
+means that `top` is reserved for the debug display and cannot automatically become the CALL display.
 
 ## Elevator Contact
 
@@ -263,6 +441,8 @@ When the elevator leaves a floor, a drive lock is activated.
 This prevents the elevator from being called to another destination while it is already travelling.
 
 The drive lock is released immediately when the elevator reaches another floor and is replaced by the normal cabin lock.
+
+The elevator also remains marked as busy while travelling, even if the drive lock itself expires.
 
 ## Elevator Timeout
 
