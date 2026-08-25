@@ -40,12 +40,30 @@ local config_modes = {
 }
 
 
+local function createCacheBuster()
+    return tostring(
+        os.epoch("utc")
+    )
+end
+
+
+local function buildDownloadUrl(
+    file_name
+)
+    return base_url
+        .. file_name
+        .. "?cache="
+        .. createCacheBuster()
+end
+
+
 local function downloadFile(
     file_name
 )
     local url =
-        base_url
-        .. file_name
+        buildDownloadUrl(
+            file_name
+        )
 
 
     print(
@@ -58,7 +76,14 @@ local function downloadFile(
     local response,
         error_message =
         http.get(
-            url
+            url,
+            {
+                ["Cache-Control"] =
+                    "no-cache",
+
+                ["Pragma"] =
+                    "no-cache"
+            }
         )
 
 
