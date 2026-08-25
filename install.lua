@@ -1,7 +1,23 @@
 -- install.lua
 
+local args = {
+    ...
+}
+
+
+local default_branch =
+    "main"
+
+
+local branch =
+    args[1]
+    or default_branch
+
+
 local base_url =
-    "https://raw.githubusercontent.com/Endkind/ComputerCraft-Create-Elevator/main/"
+    "https://raw.githubusercontent.com/Endkind/ComputerCraft-Create-Elevator/"
+    .. branch
+    .. "/"
 
 
 local files = {
@@ -9,13 +25,12 @@ local files = {
     "config.lua",
     "network.lua",
     "display.lua",
-    "debug_display.lua",
-    "LICENSE",
-    "README.md"
+    "debug_display.lua"
 }
 
 
-local timeout = 5
+local timeout =
+    5
 
 
 local config_modes = {
@@ -25,12 +40,30 @@ local config_modes = {
 }
 
 
+local function createCacheBuster()
+    return tostring(
+        os.epoch("utc")
+    )
+end
+
+
+local function buildDownloadUrl(
+    file_name
+)
+    return base_url
+        .. file_name
+        .. "?cache="
+        .. createCacheBuster()
+end
+
+
 local function downloadFile(
     file_name
 )
     local url =
-        base_url
-        .. file_name
+        buildDownloadUrl(
+            file_name
+        )
 
 
     print(
@@ -43,7 +76,14 @@ local function downloadFile(
     local response,
         error_message =
         http.get(
-            url
+            url,
+            {
+                ["Cache-Control"] =
+                    "no-cache",
+
+                ["Pragma"] =
+                    "no-cache"
+            }
         )
 
 
@@ -92,6 +132,13 @@ local function downloadFiles()
         "Installing ComputerCraft Create Elevator"
     )
 
+
+    print(
+        "Branch: "
+        .. branch
+    )
+
+
     print()
 
 
@@ -119,6 +166,7 @@ local function downloadFiles()
 
 
     print()
+
 
     print(
         "All files downloaded"
@@ -168,11 +216,13 @@ end
 local function waitForConfigurationRequest()
     print()
 
+
     print(
         "Press ENTER within "
         .. timeout
         .. " seconds to configure."
     )
+
 
     print(
         "Otherwise defaults will be used."
@@ -192,18 +242,21 @@ local function waitForConfigurationRequest()
 
 
         if event == "key"
-            and value == keys.enter
+            and value
+                == keys.enter
         then
             os.cancelTimer(
                 timer
             )
+
 
             return true
         end
 
 
         if event == "timer"
-            and value == timer
+            and value
+                == timer
         then
             return false
         end
@@ -217,7 +270,9 @@ local function isValidConfigMode(
     for _, valid_mode in ipairs(
         config_modes
     ) do
-        if mode == valid_mode then
+        if mode
+            == valid_mode
+        then
             return true
         end
     end
@@ -229,6 +284,7 @@ end
 
 local function askConfigMode()
     print()
+
 
     print(
         "Configuration modes:"
@@ -301,13 +357,18 @@ local function appendUnique(
     for _, key in ipairs(
         source
     ) do
-        if not existing[key] then
+        if not existing[
+            key
+        ] then
             table.insert(
                 target,
                 key
             )
 
-            existing[key] =
+
+            existing[
+                key
+            ] =
                 true
         end
     end
@@ -333,6 +394,7 @@ local function getConfigKeys(
             keys_to_configure,
             config.default
         )
+
 
         appendUnique(
             keys_to_configure,
@@ -388,6 +450,7 @@ local function valueToString(
             return "true"
         end
 
+
         return "false"
     end
 
@@ -439,8 +502,9 @@ local function parseInput(
     end
 
 
-    if string.lower(input)
-        == "null"
+    if string.lower(
+        input
+    ) == "null"
     then
         return true,
             nil
@@ -453,7 +517,9 @@ local function parseInput(
         )
 
 
-    if value_type == "number" then
+    if value_type
+        == "number"
+    then
         local number =
             tonumber(
                 input
@@ -471,7 +537,9 @@ local function parseInput(
     end
 
 
-    if value_type == "boolean" then
+    if value_type
+        == "boolean"
+    then
         local boolean =
             parseBoolean(
                 input
@@ -489,10 +557,9 @@ local function parseInput(
     end
 
 
-    -- A null default has no type information.
-    -- In this project nullable config values
-    -- such as network_side/display_side are strings.
-    if default_value == nil then
+    if default_value
+        == nil
+    then
         return true,
             input
     end
@@ -577,18 +644,22 @@ local function configure(
 
     print()
 
+
     print(
         "Configuration mode: "
         .. mode
     )
 
+
     print(
         "Press ENTER to keep the default value."
     )
 
+
     print(
         "Use 'null' for nullable values."
     )
+
 
     print()
 
@@ -603,7 +674,9 @@ local function configure(
             )
 
 
-        values[key] =
+        values[
+            key
+        ] =
             value
     end
 
@@ -627,6 +700,7 @@ local function configure(
 
     print()
 
+
     print(
         "Configuration saved"
     )
@@ -636,9 +710,11 @@ end
 local function reboot()
     print()
 
+
     print(
         "Installation complete"
     )
+
 
     print(
         "Rebooting..."
@@ -646,6 +722,7 @@ local function reboot()
 
 
     sleep(1)
+
 
     os.reboot()
 end
@@ -661,11 +738,14 @@ local config =
 if not waitForConfigurationRequest() then
     print()
 
+
     print(
         "Configuration skipped"
     )
 
+
     reboot()
+
 
     return
 end

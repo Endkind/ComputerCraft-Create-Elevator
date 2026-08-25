@@ -2,7 +2,78 @@
 
 local network = {}
 
-network.PROTOCOL = "elevator"
+
+network.PROTOCOL =
+    "elevator"
+
+
+network.DISCOVERY_CHANNEL =
+    42420
+
+network.DISCOVERY_REPLY_CHANNEL =
+    42421
+
+
+function network.createDiscoveryProbe(
+    computer_id
+)
+    return {
+        type = "elevator_discovery_probe",
+        computer_id = computer_id
+    }
+end
+
+
+function network.createDiscoveryResponse(
+    computer_id,
+    nonce
+)
+    return {
+        type = "elevator_discovery_response",
+        computer_id = computer_id,
+        nonce = nonce
+    }
+end
+
+
+function network.createDiscoveryProbeWithNonce(
+    computer_id,
+    nonce
+)
+    return {
+        type = "elevator_discovery_probe",
+        computer_id = computer_id,
+        nonce = nonce
+    }
+end
+
+
+function network.isDiscoveryProbe(
+    message
+)
+    return type(message)
+        == "table"
+        and message.type
+            == "elevator_discovery_probe"
+        and type(message.computer_id)
+            == "number"
+        and type(message.nonce)
+            == "string"
+end
+
+
+function network.isDiscoveryResponse(
+    message
+)
+    return type(message)
+        == "table"
+        and message.type
+            == "elevator_discovery_response"
+        and type(message.computer_id)
+            == "number"
+        and type(message.nonce)
+            == "string"
+end
 
 
 function network.sendFloorState(
@@ -21,7 +92,9 @@ function network.sendFloorState(
 end
 
 
-function network.requestFloorStates(group)
+function network.requestFloorStates(
+    group
+)
     rednet.broadcast({
         type = "request_floor_states",
         group = group
@@ -61,13 +134,10 @@ function network.sendGroupStatus(
 )
     rednet.broadcast({
         type = "group_status",
-
         group = group,
         current_floor = current_floor,
-
         busy = busy,
         lock_until = lock_until,
-
         timeout_until = timeout_until,
         check_until = check_until
     }, network.PROTOCOL)
@@ -81,7 +151,9 @@ function network.requestGroups()
 end
 
 
-function network.rebootFloors(group)
+function network.rebootFloors(
+    group
+)
     rednet.broadcast({
         type = "reboot_floors",
         group = group
@@ -97,10 +169,8 @@ function network.requestElevator(
 )
     rednet.broadcast({
         type = "elevator_request",
-
         group = group,
         floor = floor,
-
         request_id = request_id,
         requester_id = requester_id
     }, network.PROTOCOL)
@@ -135,22 +205,20 @@ function network.sendCallStatus(
 )
     rednet.broadcast({
         type = "call_status",
-
         requester_id = requester_id,
         request_id = request_id,
-
         group = group,
         floor = floor,
-
         status = status,
-
         wait_until = wait_until,
         tries_remaining = tries_remaining
     }, network.PROTOCOL)
 end
 
 
-function network.isFloorState(message)
+function network.isFloorState(
+    message
+)
     return type(message) == "table"
         and message.type == "floor_state"
         and type(message.group) == "number"
@@ -160,14 +228,18 @@ function network.isFloorState(message)
 end
 
 
-function network.isFloorStateRequest(message)
+function network.isFloorStateRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "request_floor_states"
         and type(message.group) == "number"
 end
 
 
-function network.isFloorRegister(message)
+function network.isFloorRegister(
+    message
+)
     return type(message) == "table"
         and message.type == "floor_register"
         and type(message.group) == "number"
@@ -175,53 +247,72 @@ function network.isFloorRegister(message)
 end
 
 
-function network.isFloorRegistrationRequest(message)
+function network.isFloorRegistrationRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "request_floor_registrations"
         and type(message.group) == "number"
 end
 
 
-function network.isGroupStatus(message)
+function network.isGroupStatus(
+    message
+)
     if type(message) ~= "table" then
         return false
     end
+
 
     if message.type ~= "group_status" then
         return false
     end
 
+
     if type(message.group) ~= "number" then
         return false
     end
 
+
     if message.current_floor ~= nil
-        and type(message.current_floor) ~= "number"
+        and type(message.current_floor)
+            ~= "number"
     then
         return false
     end
 
-    return type(message.busy) == "boolean"
-        and type(message.lock_until) == "number"
-        and type(message.timeout_until) == "number"
-        and type(message.check_until) == "number"
+
+    return type(message.busy)
+            == "boolean"
+        and type(message.lock_until)
+            == "number"
+        and type(message.timeout_until)
+            == "number"
+        and type(message.check_until)
+            == "number"
 end
 
 
-function network.isGroupRequest(message)
+function network.isGroupRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "request_groups"
 end
 
 
-function network.isRebootRequest(message)
+function network.isRebootRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "reboot_floors"
         and type(message.group) == "number"
 end
 
 
-function network.isElevatorRequest(message)
+function network.isElevatorRequest(
+    message
+)
     return type(message) == "table"
         and message.type == "elevator_request"
         and type(message.group) == "number"
@@ -231,7 +322,9 @@ function network.isElevatorRequest(message)
 end
 
 
-function network.isElevatorDispatch(message)
+function network.isElevatorDispatch(
+    message
+)
     return type(message) == "table"
         and message.type == "dispatch_elevator"
         and type(message.group) == "number"
@@ -239,7 +332,9 @@ function network.isElevatorDispatch(message)
 end
 
 
-function network.isCallStatus(message)
+function network.isCallStatus(
+    message
+)
     return type(message) == "table"
         and message.type == "call_status"
         and type(message.requester_id) == "number"
