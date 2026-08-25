@@ -31,31 +31,52 @@ local function isMonitor(name)
         return false
     end
 
+
     return peripheral.getType(name)
         == "monitor"
+end
+
+
+local function isDebugMonitor(name)
+    if config.debug_display_side == nil then
+        return false
+    end
+
+
+    return name
+        == config.debug_display_side
 end
 
 
 local function findMonitor(
     configured_name
 )
-    -- Explicitly configured monitor.
-    --
-    -- This can either be a local side:
-    -- "left", "right", ...
-    --
-    -- or a Wired Modem peripheral:
-    -- "monitor_42"
+    -- Explicit display configured.
     if configured_name ~= nil then
+        if isDebugMonitor(
+            configured_name
+        ) then
+            error(
+                "Display and debug display cannot use the same monitor: "
+                .. tostring(
+                    configured_name
+                )
+            )
+        end
+
+
         if not isMonitor(
             configured_name
         ) then
             error(
                 "Configured display '"
-                .. tostring(configured_name)
+                .. tostring(
+                    configured_name
+                )
                 .. "' is not a monitor"
             )
         end
+
 
         return configured_name,
             peripheral.wrap(
@@ -66,22 +87,19 @@ local function findMonitor(
 
     -- display_side == nil
     --
-    -- Automatically search for a monitor.
-    --
-    -- If a debug monitor is explicitly
-    -- configured, do not take that monitor.
-    local excluded_monitor =
-        config.debug_display_side
-
-
+    -- Automatically find a monitor.
+    -- The configured debug display is always
+    -- excluded from this search.
     for _, name in ipairs(
         peripheral.getNames()
     ) do
-        if name ~= excluded_monitor
-            and isMonitor(name)
+        if isMonitor(name)
+            and not isDebugMonitor(name)
         then
             return name,
-                peripheral.wrap(name)
+                peripheral.wrap(
+                    name
+                )
         end
     end
 
@@ -108,25 +126,30 @@ local function configurePalette(
         background_color
     )
 
+
     monitor.setPaletteColor(
         TEXT_COLOR,
         text_color
     )
+
 
     monitor.setPaletteColor(
         BUTTON_COLOR,
         button_color
     )
 
+
     monitor.setPaletteColor(
         BUTTON_TEXT_COLOR,
         button_text_color
     )
 
+
     monitor.setPaletteColor(
         FAILURE_BUTTON_COLOR,
         failure_button_color
     )
+
 
     monitor.setPaletteColor(
         FAILURE_TEXT_COLOR,
@@ -160,14 +183,17 @@ local function centerText(
         foreground
     )
 
+
     monitor.setBackgroundColor(
         background
     )
+
 
     monitor.setCursorPos(
         x,
         y
     )
+
 
     monitor.write(
         text
@@ -186,9 +212,11 @@ local function drawButton(
             y
         )
 
+
         monitor.setBackgroundColor(
             background
         )
+
 
         monitor.write(
             string.rep(
@@ -240,6 +268,7 @@ local function getAnimationText(
         call_state.animation_arrow_count
         or 1
 
+
     local frame =
         call_state.animation_frame
         or 1
@@ -258,7 +287,8 @@ local function getAnimationText(
 
 
     if frame <= max_arrows then
-        arrow_count = frame
+        arrow_count =
+            frame
     else
         arrow_count =
             frame_count
@@ -274,7 +304,8 @@ local function getAnimationText(
     if direction == ">" then
         return string.rep(
             " ",
-            max_arrows - arrow_count
+            max_arrows
+                - arrow_count
         )
             .. string.rep(
                 ">",
@@ -290,7 +321,8 @@ local function getAnimationText(
         )
             .. string.rep(
                 " ",
-                max_arrows - arrow_count
+                max_arrows
+                    - arrow_count
             )
     end
 
@@ -316,6 +348,19 @@ function display.init(
 
 
     if monitor == nil then
+        if config.debug_display_side
+            ~= nil
+        then
+            error(
+                "No display monitor found. Debug monitor '"
+                .. tostring(
+                    config.debug_display_side
+                )
+                .. "' is excluded."
+            )
+        end
+
+
         error(
             "No display monitor found"
         )
@@ -328,7 +373,9 @@ function display.init(
     )
 
 
-    monitor.setTextScale(0.5)
+    monitor.setTextScale(
+        0.5
+    )
 
 
     configurePalette(
@@ -345,9 +392,11 @@ function display.init(
         BACKGROUND_COLOR
     )
 
+
     monitor.setTextColor(
         TEXT_COLOR
     )
+
 
     monitor.clear()
 end
@@ -372,9 +421,11 @@ function display.update(
         BACKGROUND_COLOR
     )
 
+
     monitor.setTextColor(
         TEXT_COLOR
     )
+
 
     monitor.clear()
 
@@ -401,13 +452,17 @@ function display.update(
     button.y2 = height - 1
 
 
-    if button.x2 < button.x1 then
+    if button.x2
+        < button.x1
+    then
         button.x1 = 1
         button.x2 = width
     end
 
 
-    if button.y2 < button.y1 then
+    if button.y2
+        < button.y1
+    then
         button.y1 = 2
         button.y2 = height
     end
@@ -416,23 +471,30 @@ function display.update(
     local button_text =
         "CALL"
 
+
     local button_background =
         BUTTON_COLOR
+
 
     local button_foreground =
         BUTTON_TEXT_COLOR
 
 
     if call_state ~= nil then
-        if call_state.status == "failed" then
+        if call_state.status
+            == "failed"
+        then
             button_text =
                 "CALL FAILED"
+
 
             button_background =
                 FAILURE_BUTTON_COLOR
 
+
             button_foreground =
                 FAILURE_TEXT_COLOR
+
 
         elseif call_state.status
             == "arrived"
@@ -451,11 +513,13 @@ function display.update(
                     "CALL"
             end
 
+
         elseif call_state.status
             == "queued"
         then
             button_text =
                 "QUEUED"
+
 
         elseif call_state.status
             == "waiting"
@@ -489,6 +553,7 @@ function display.update(
     monitor.setBackgroundColor(
         BACKGROUND_COLOR
     )
+
 
     monitor.setTextColor(
         TEXT_COLOR
