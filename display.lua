@@ -1,7 +1,5 @@
 -- display.lua
 
-local config = require("config")
-
 local display = {}
 
 local monitor = nil
@@ -31,36 +29,19 @@ local function isMonitor(name)
         return false
     end
 
-
-    return peripheral.getType(name)
-        == "monitor"
-end
-
-
-local function isDebugMonitor(name)
-    if config.debug_display_side == nil then
-        return false
-    end
-
-
-    return name
-        == config.debug_display_side
+    return peripheral.getType(name) == "monitor"
 end
 
 
 local function findMonitor(
-    configured_name
+    configured_name,
+    excluded_name
 )
-    -- Explicit display configured.
     if configured_name ~= nil then
-        if isDebugMonitor(
-            configured_name
-        ) then
+        if configured_name == excluded_name then
             error(
                 "Display and debug display cannot use the same monitor: "
-                .. tostring(
-                    configured_name
-                )
+                .. tostring(configured_name)
             )
         end
 
@@ -70,9 +51,7 @@ local function findMonitor(
         ) then
             error(
                 "Configured display '"
-                .. tostring(
-                    configured_name
-                )
+                .. tostring(configured_name)
                 .. "' is not a monitor"
             )
         end
@@ -85,16 +64,11 @@ local function findMonitor(
     end
 
 
-    -- display_side == nil
-    --
-    -- Automatically find a monitor.
-    -- The configured debug display is always
-    -- excluded from this search.
     for _, name in ipairs(
         peripheral.getNames()
     ) do
-        if isMonitor(name)
-            and not isDebugMonitor(name)
+        if name ~= excluded_name
+            and isMonitor(name)
         then
             return name,
                 peripheral.wrap(
@@ -126,30 +100,25 @@ local function configurePalette(
         background_color
     )
 
-
     monitor.setPaletteColor(
         TEXT_COLOR,
         text_color
     )
-
 
     monitor.setPaletteColor(
         BUTTON_COLOR,
         button_color
     )
 
-
     monitor.setPaletteColor(
         BUTTON_TEXT_COLOR,
         button_text_color
     )
 
-
     monitor.setPaletteColor(
         FAILURE_BUTTON_COLOR,
         failure_button_color
     )
-
 
     monitor.setPaletteColor(
         FAILURE_TEXT_COLOR,
@@ -183,17 +152,14 @@ local function centerText(
         foreground
     )
 
-
     monitor.setBackgroundColor(
         background
     )
-
 
     monitor.setCursorPos(
         x,
         y
     )
-
 
     monitor.write(
         text
@@ -212,11 +178,9 @@ local function drawButton(
             y
         )
 
-
         monitor.setBackgroundColor(
             background
         )
-
 
         monitor.write(
             string.rep(
@@ -287,8 +251,7 @@ local function getAnimationText(
 
 
     if frame <= max_arrows then
-        arrow_count =
-            frame
+        arrow_count = frame
     else
         arrow_count =
             frame_count
@@ -333,6 +296,7 @@ end
 
 function display.init(
     configured_name,
+    excluded_name,
     background_color,
     text_color,
     button_color,
@@ -343,19 +307,16 @@ function display.init(
     monitor_name,
     monitor =
         findMonitor(
-            configured_name
+            configured_name,
+            excluded_name
         )
 
 
     if monitor == nil then
-        if config.debug_display_side
-            ~= nil
-        then
+        if excluded_name ~= nil then
             error(
                 "No display monitor found. Debug monitor '"
-                .. tostring(
-                    config.debug_display_side
-                )
+                .. tostring(excluded_name)
                 .. "' is excluded."
             )
         end
@@ -392,11 +353,9 @@ function display.init(
         BACKGROUND_COLOR
     )
 
-
     monitor.setTextColor(
         TEXT_COLOR
     )
-
 
     monitor.clear()
 end
@@ -421,11 +380,9 @@ function display.update(
         BACKGROUND_COLOR
     )
 
-
     monitor.setTextColor(
         TEXT_COLOR
     )
-
 
     monitor.clear()
 
@@ -452,17 +409,13 @@ function display.update(
     button.y2 = height - 1
 
 
-    if button.x2
-        < button.x1
-    then
+    if button.x2 < button.x1 then
         button.x1 = 1
         button.x2 = width
     end
 
 
-    if button.y2
-        < button.y1
-    then
+    if button.y2 < button.y1 then
         button.y1 = 2
         button.y2 = height
     end
@@ -487,10 +440,8 @@ function display.update(
             button_text =
                 "CALL FAILED"
 
-
             button_background =
                 FAILURE_BUTTON_COLOR
-
 
             button_foreground =
                 FAILURE_TEXT_COLOR
@@ -553,7 +504,6 @@ function display.update(
     monitor.setBackgroundColor(
         BACKGROUND_COLOR
     )
-
 
     monitor.setTextColor(
         TEXT_COLOR
